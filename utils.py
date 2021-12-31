@@ -1,5 +1,6 @@
 import re
 import jieba
+from itertools import chain
 
 #####
 # Common Functions

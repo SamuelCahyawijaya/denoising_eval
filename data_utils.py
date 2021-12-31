@@ -21,6 +21,9 @@ def load_dataset(manifest_file, num_proc, audio_column_name, text_column_name):
     
     manifest_df = pd.read_csv(manifest_file)
     manifest_df['path'] = manifest_df[audio_column_name].apply(lambda path: f'{base_path}/{path}')
+    manifest_df['transcription'] = manifest_df[text_column_name].apply(
+        lambda path: open(f'{base_path}/{path}', "r").read()
+    )
     
     batches = Dataset.from_pandas(manifest_df)
     batches = batches.map(speech_file_to_array_fn, num_proc=num_proc)

@@ -177,25 +177,6 @@ def run(model_args, data_args, training_args):
         cer = char_distance / char_tokens
 
         return {"mer": mer, "cer": cer}
-
-    # Add config to args
-    ## Logging config
-    args.logging_strategy='steps'
-    args.logging_steps=10
-    args.report_to=['tensorboard']
-        
-    ## Eval config
-    args.evaluation_strategy="epoch"
-    args.eval_steps=1
-    args.eval_accumulation_steps=500
-    args.metric_for_best_model='mer'
-    args.greater_is_better=False
-    args.load_best_model_at_end=True
-        
-    ## Save config
-    args.save_steps=1
-    args.save_strategy='epoch'
-    args.save_total_limit=3
     
     # Initialize Trainer
     trainer = Trainer(

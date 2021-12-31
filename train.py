@@ -91,9 +91,9 @@ def run(model_args, data_args, training_args):
         chars_to_ignore_re = f"[{re.escape(''.join(CHARS_TO_IGNORE))}]"
         def remove_special_characters(batch):
             if chars_to_ignore_re is not None:
-                batch[data_args.text_column_name] = re.sub(chars_to_ignore_re, "", batch[data_args.text_column_name]).lower() + " "
+                batch['transcription'] = re.sub(chars_to_ignore_re, "", batch['transcription']).lower() + " "
             else:
-                batch[data_args.text_column_name] = batch[data_args.text_column_name].lower() + " "
+                batch['transcription'] = batch['transcription'].lower() + " "
             return batch
 
         with training_args.main_process_first(desc="dataset map special characters removal"):
@@ -118,7 +118,7 @@ def run(model_args, data_args, training_args):
 
             # Preprocess text
             with processor.as_target_processor():
-                batch["labels"] = processor(batch[data_args.text_column_name]).input_ids
+                batch["labels"] = processor(batch['transcription']).input_ids
 
             return batch
 
@@ -180,25 +180,6 @@ def run(model_args, data_args, training_args):
         cer = char_distance / char_tokens
 
         return {"mer": mer, "cer": cer} 
-    
-    # Add config to args
-    ## Logging config
-    training_args.logging_strategy='steps'
-    training_args.logging_steps=100
-    training_args.report_to=['tensorboard']
-        
-    ## Eval config
-    training_args.evaluation_strategy="epoch"
-    training_args.eval_steps=1
-    training_args.eval_accumulation_steps=100
-    training_args.metric_for_best_model='mer'
-    training_args.greater_is_better=False
-    training_args.load_best_model_at_end=True
-        
-    ## Save config
-    training_args.save_steps=1
-    training_args.save_strategy='epoch'
-    training_args.save_total_limit=3
 
     # Initialize Trainer
     trainer = Trainer(
@@ -208,7 +189,8 @@ def run(model_args, data_args, training_args):
         data_collator=data_collator,
         args=training_args,
         compute_metrics=compute_metrics,
-        tokenizer=processor.feature_extractor
+        tokenizer=processor.feature_extractor,
+        callbacks = [EarlyStoppingCallback(early_stopping_patience=5)]
     )
 
     ###
@@ -241,11 +223,17 @@ def run(model_args, data_args, training_args):
     ###
     results = {}
     logger.info("*** Evaluation Phase ***")
-    metrics = trainer.predict(eval_dataset=vectorized_datasets["valid"])
+    metrics = trainer.evaluate(eval_dataset=vectorized_datasets["valid"])
     metrics["eval_samples"] = len(vectorized_datasets["valid"])
 
     trainer.log_metrics("eval", metrics)
     trainer.save_metrics("eval", metrics)
+
+    pickle.dump(metrics, open(f'{args.output_dir}/results.pkl', 'wb'))
+
+    print('=== Valid Performance ===')
+    for k, v in metrics.items():
+        print('{:>30}: {:<50}'.format(k, str(v)).center(80))
     
 #####
 # Entry Point

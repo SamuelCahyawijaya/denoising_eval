@@ -19,7 +19,7 @@ class ModelArguments:
         },
     )
     mask_time_length: int = field(
-        default=0,
+        default=3,
         metadata={"help": "Length of vector span to mask along the time axis."},
     )
     mask_feature_prob: float = field(
@@ -30,7 +30,7 @@ class ModelArguments:
         },
     )
     mask_feature_length: int = field(
-        default=0,
+        default=3,
         metadata={"help": "Length of vector span to mask along the feature axis."},
     )
 
