@@ -194,7 +194,7 @@ def run(model_args, data_args, training_args):
     ###
     results = {}
     logger.info("*** Test Phase ***")
-    metrics = trainer.predict(eval_dataset=vectorized_datasets["test"])
+    metrics = trainer.evaluate(eval_dataset=vectorized_datasets["test"])
     metrics["eval_samples"] = len(vectorized_datasets["test"])
 
     trainer.log_metrics("eval", metrics)
