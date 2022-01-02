@@ -3,6 +3,7 @@ import logging
 import numpy as np
 import pandas as pd
 import argparse
+import glob
 
 import torchaudio
 import torch
@@ -10,6 +11,8 @@ import re
 import json 
 import librosa
 from datasets import DatasetDict
+import torchvision.transforms as T
+import torchvision
 
 from transformers import (
     set_seed,
@@ -40,10 +43,12 @@ from transformers.utils.versions import require_version
 
 from args_helper import ModelArguments, DataArguments
 from utils import CHARS_TO_IGNORE, remove_special_characters, extract_all_chars, tokenize_for_mer, tokenize_for_cer
-from data_utils import speech_file_to_array_fn, load_dataset, DataCollatorCTCWithPadding
+from data_utils import speech_file_to_array_fn, load_dataset 
 
 import datasets
 from datasets import load_from_disk, set_caching_enabled
+from data_collator_ctc import DataCollatorCTCWithPadding, DataCollatorMMCTCWithPadding
+from mm_wrapper import MMWav2Vec2Model
 
 set_caching_enabled(True)
 logger = logging.getLogger(__name__)    
@@ -66,23 +71,34 @@ def run(model_args, data_args, training_args):
         "gradient_checkpointing": training_args.gradient_checkpointing,
     })
     processor = Wav2Vec2Processor.from_pretrained(model_args.model_name_or_path)
-    model = Wav2Vec2ForCTC.from_pretrained(model_args.model_name_or_path, config=config)
+    wav2vec2ctc = Wav2Vec2ForCTC.from_pretrained(model_args.model_name_or_path, config=config)
+
+    model = MMWav2Vec2Model(wav2vec2ctc)
     model.cuda()
     
-    if not os.path.exists('./cache/preprocess_data.arrow'):
+    if data_args.use_video:
+        cache_file = './cache_mm/preprocess_data.arrow'
+        cache_folder = './cache_mm'
+    else:
+        cache_file = './cache/preprocess_data.arrow'
+        cache_folder = './cache'
+
+    if not os.path.exists(cache_file):
+        base_path = '/'.join(data_args.train_manifest_path.split('/')[:-1])
+        
         ###
         # Prepare Dataset
         ###
         raw_datasets = DatasetDict()
         print('Loading train dataset...')
         raw_datasets["train"] = load_dataset(data_args.train_manifest_path, data_args.num_workers, 
-                                        data_args.audio_column_name, data_args.text_column_name)
+                data_args.audio_column_name, data_args.text_column_name, data_args.video_column_name)
         print('Loading validation dataset...')
         raw_datasets["valid"] = load_dataset(data_args.valid_manifest_path, data_args.num_workers, 
-                                        data_args.audio_column_name, data_args.text_column_name)
+                data_args.audio_column_name, data_args.text_column_name, data_args.video_column_name)
         print('Loading test dataset...')
         raw_datasets["test"] = load_dataset(data_args.test_manifest_path, data_args.num_workers, 
-                                        data_args.audio_column_name, data_args.text_column_name)
+                data_args.audio_column_name, data_args.text_column_name, data_args.video_column_name)
 
         print('Preprocess dataset...')
 
@@ -103,9 +119,9 @@ def run(model_args, data_args, training_args):
                 desc="remove special characters from datasets",
                 load_from_cache_file=True,
                 cache_file_names={
-                    "train": "cache/train_clean.arrow",
-                    "valid": "cache/valid_clean.arrow",
-                    "test": "cache/test_clean.arrow"
+                    "train": f"{cache_folder}/train_clean.arrow",
+                    "valid": f"{cache_folder}/valid_clean.arrow",
+                    "test": f"{cache_folder}/test_clean.arrow"
                 }
             )
 
@@ -122,24 +138,60 @@ def run(model_args, data_args, training_args):
 
             return batch
 
+        removable_column_names = raw_datasets["train"].column_names
+        if data_args.use_video:
+            removable_column_names.remove('video_path')
+            
         with training_args.main_process_first(desc="dataset map preprocessing"):
             vectorized_datasets = raw_datasets.map(
                 prepare_dataset,
-                remove_columns=raw_datasets["train"].column_names,
+                remove_columns=removable_column_names,
                 num_proc=data_args.preprocessing_num_workers,
                 desc="preprocess datasets",
                 load_from_cache_file=False,
                 cache_file_names={
-                    "train": "cache/train_vec.arrow",
-                    "valid": "cache/valid_vec.arrow",
-                    "test": "cache/test_vec.arrow"
+                    "train": f"{cache_folder}/train_vec.arrow",
+                    "valid": f"{cache_folder}/valid_vec.arrow",
+                    "test": f"{cache_folder}/test_vec.arrow"
                 }
             )
+
+        # Preprocess video sample
+        if data_args.use_video:
+            print('Load video data...')
+            img_transforms = T.Compose([
+                T.Grayscale(num_output_channels=1),
+                T.Resize((32,32))
+            ])
+            
+            def load_video_data(batch):
+                image_buffers = []
+                video_path = batch["video_path"]
+                for image_path in glob.glob(f'{base_path}/{video_path}/*.jpg'):
+                    image = torchvision.io.read_image(image_path) / 255
+                    image = img_transforms(image)
+                    image_buffers.append(image)
+                batch["video_values"] = image_buffers # L, C, H, W
+                return batch
+
+            with training_args.main_process_first(desc="dataset map preprocessing"):
+                vectorized_datasets = vectorized_datasets.map(
+                    load_video_data,
+                    remove_columns=['video_path'],
+                    num_proc=data_args.preprocessing_num_workers,
+                    desc="preprocess datasets",
+                    load_from_cache_file=False,
+                    cache_file_names={
+                        "train": f"{cache_folder}/train_vec.arrow",
+                        "valid": f"{cache_folder}/valid_vec.arrow",
+                        "test": f"{cache_folder}/test_vec.arrow"
+                    }
+                )
         
-        vectorized_datasets.save_to_disk('./cache/preprocess_data.arrow')
+        vectorized_datasets.save_to_disk(f'{cache_folder}/preprocess_data.arrow')
     else:
         print('Loading cached dataset...')
-        vectorized_datasets = datasets.load_from_disk('./cache/preprocess_data.arrow')
+        vectorized_datasets = datasets.load_from_disk(f'{cache_folder}/preprocess_data.arrow')
 
     if data_args.preprocessing_only:
         logger.info(f"Data preprocessing finished. Files cached at {vectorized_datasets.cache_files}")
@@ -151,7 +203,10 @@ def run(model_args, data_args, training_args):
     print('Preparing Trainer...')
 
     # Instantiate custom data collator
-    data_collator = DataCollatorCTCWithPadding(processor=processor)
+    if data_args.use_video:
+        data_collator = DataCollatorMMCTCWithPadding(processor=processor)
+    else:
+        data_collator = DataCollatorCTCWithPadding(processor=processor)
 
     # Define compute metric function
     def compute_metrics(pred):

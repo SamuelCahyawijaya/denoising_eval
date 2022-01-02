@@ -61,10 +61,18 @@ class DataArguments:
         metadata={"help": "Whether to only run preprocessing."},
     )
     audio_column_name: Optional[str] = field(
-        default="file_name",
-        metadata={"help": "The name of the dataset column containing the audio path. Defaults to 'file_name'"},
+        default="audio",
+        metadata={"help": "The name of the dataset column containing the audio path. Defaults to 'audio'"},
     )
     text_column_name: Optional[str] = field(
         default="text",
         metadata={"help": "The name of the dataset column containing the text data. Defaults to 'text'"},
+    )
+    video_column_name: Optional[str] = field(
+        default=None,
+        metadata={"help": "The name of the dataset column containing the video data. Defaults to 'None'"},
+    )
+    use_video: Optional[bool] = field(
+        default=False,
+        metadata={"help": "Whether to incorporate video data for ASR or not. Defaults to 'False'"},
     )
