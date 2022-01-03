@@ -42,11 +42,12 @@ from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
 from args_helper import ModelArguments, DataArguments
-from utils import CHARS_TO_IGNORE, remove_special_characters, extract_all_chars, tokenize_for_mer, tokenize_for_cer
-from data_utils import speech_file_to_array_fn, load_dataset 
 
 import datasets
 from datasets import load_from_disk, set_caching_enabled
+
+from utils import CHARS_TO_IGNORE, remove_special_characters, extract_all_chars, tokenize_for_mer, tokenize_for_cer
+from data_utils import speech_file_to_array_fn, load_dataset 
 from data_collator_ctc import DataCollatorCTCWithPadding, DataCollatorMMCTCWithPadding
 from mm_wrapper import MMWav2Vec2Model
 
@@ -72,8 +73,10 @@ def run(model_args, data_args, training_args):
     })
     processor = Wav2Vec2Processor.from_pretrained(model_args.model_name_or_path)
     wav2vec2ctc = Wav2Vec2ForCTC.from_pretrained(model_args.model_name_or_path, config=config)
-
-    model = MMWav2Vec2Model(wav2vec2ctc)
+    if data_args.use_video:
+        model = MMWav2Vec2Model(wav2vec2ctc)
+    else:
+        model = wav2vec2ctc
     model.cuda()
     
     if data_args.use_video:
@@ -220,6 +223,9 @@ def run(model_args, data_args, training_args):
         label_strs = processor.batch_decode(pred.label_ids, group_tokens=False)
         mixed_distance, mixed_tokens = 0, 0
         char_distance, char_tokens = 0, 0
+        
+        pred_strs = list(map(lambda pred_str: pred_str[:-1].strip(), pred_strs))
+        label_strs = list(map(lambda label_str: label_str.replace('[UNK]','#'), label_strs))
         for pred_str, label_str in zip(pred_strs, label_strs):
             # Calculate 
             m_pred = tokenize_for_mer(pred_str)
@@ -233,6 +239,13 @@ def run(model_args, data_args, training_args):
             char_tokens += len(c_ref)
         mer = mixed_distance / mixed_tokens
         cer = char_distance / char_tokens
+        
+        f = open(f'{data_args.output_dir}/valid.results', 'w')
+        f.writelines([item+'\n' for item in pred_strs])
+        f.close()
+        f = open(f'{data_args.output_dir}/valid.label', 'w')
+        f.writelines([item+'\n' for item in label_strs])
+        f.close()
 
         return {"mer": mer, "cer": cer} 
 
