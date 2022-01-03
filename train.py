@@ -240,10 +240,10 @@ def run(model_args, data_args, training_args):
         mer = mixed_distance / mixed_tokens
         cer = char_distance / char_tokens
         
-        f = open(f'{data_args.output_dir}/valid.results', 'w')
+        f = open(f'{training_args.output_dir}/valid.results', 'w')
         f.writelines([item+'\n' for item in pred_strs])
         f.close()
-        f = open(f'{data_args.output_dir}/valid.label', 'w')
+        f = open(f'{training_args.output_dir}/valid.label', 'w')
         f.writelines([item+'\n' for item in label_strs])
         f.close()
 
