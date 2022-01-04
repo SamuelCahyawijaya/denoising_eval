@@ -297,7 +297,7 @@ def run(model_args, data_args, training_args):
     trainer.log_metrics("eval", metrics)
     trainer.save_metrics("eval", metrics)
 
-    pickle.dump(metrics, open(f'{args.output_dir}/results.pkl', 'wb'))
+    pickle.dump(metrics, open(f'{training_args.output_dir}/results.pkl', 'wb'))
 
     print('=== Valid Performance ===')
     for k, v in metrics.items():

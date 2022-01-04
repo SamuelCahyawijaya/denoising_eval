@@ -58,7 +58,7 @@ def run(model_args, data_args, training_args):
     # Prepare Processor & Model    
     ###
     print('Load Wav2Vec2 model and processor...')
-    config = Wav2Vec2Config.from_pretrained(model_args.model_name_or_path)
+    config = Wav2Vec2Config.from_pretrained('ctl/wav2vec2-large-xlsr-cantonese')
     config.update({
         "mask_time_prob": 0,
         "mask_time_length": 0,
@@ -66,7 +66,7 @@ def run(model_args, data_args, training_args):
         "mask_feature_length": 0,
         "gradient_checkpointing": True,
     })
-    processor = Wav2Vec2Processor.from_pretrained(model_args.model_name_or_path)
+    processor = Wav2Vec2Processor.from_pretrained('ctl/wav2vec2-large-xlsr-cantonese')
     wav2vec2ctc = Wav2Vec2ForCTC(config=config)
 
     if data_args.use_video:
