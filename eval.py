@@ -76,122 +76,8 @@ def run(model_args, data_args, training_args):
     model.load_state_dict(torch.load(f'{model_args.model_name_or_path}/pytorch_model.bin'))
     model.cuda()
     
-    if data_args.use_video:
-        cache_file = './cache_mm/preprocess_data.arrow'
-        cache_folder = './cache_mm'
-    else:
-        cache_file = './cache/preprocess_data.arrow'
-        cache_folder = './cache'
-        
-    if not os.path.exists(cache_file):
-        base_path = '/'.join(data_args.train_manifest_path.split('/')[:-1])
-        
-        ###
-        # Prepare Dataset
-        ###
-        raw_datasets = DatasetDict()
-        print('Loading train dataset...')
-        raw_datasets["train"] = load_dataset(data_args.train_manifest_path, data_args.num_workers, 
-                data_args.audio_column_name, data_args.text_column_name, data_args.video_column_name)
-        print('Loading validation dataset...')
-        raw_datasets["valid"] = load_dataset(data_args.valid_manifest_path, data_args.num_workers, 
-                data_args.audio_column_name, data_args.text_column_name, data_args.video_column_name)
-        print('Loading test dataset...')
-        raw_datasets["test"] = load_dataset(data_args.test_manifest_path, data_args.num_workers, 
-                data_args.audio_column_name, data_args.text_column_name, data_args.video_column_name)
-
-        print('Preprocess dataset...')
-
-        # Remove ignorable characters
-        print('Removing ignorable characters')
-        chars_to_ignore_re = f"[{re.escape(''.join(CHARS_TO_IGNORE))}]"
-        def remove_special_characters(batch):
-            if chars_to_ignore_re is not None:
-                batch['transcription'] = re.sub(chars_to_ignore_re, "", batch['transcription']).lower() + " "
-            else:
-                batch['transcription'] = batch['transcription'].lower() + " "
-            return batch
-
-        with training_args.main_process_first(desc="dataset map special characters removal"):
-            raw_datasets = raw_datasets.map(
-                remove_special_characters,
-                num_proc=data_args.preprocessing_num_workers,
-                desc="remove special characters from datasets",
-                load_from_cache_file=True,
-                cache_file_names={
-                    "train": f"{cache_folder}/train_clean.arrow",
-                    "valid": f"{cache_folder}/valid_clean.arrow",
-                    "test": f"{cache_folder}/test_clean.arrow"
-                }
-            )
-
-        # Preprocess audio sample and label text
-        print('Vectorize dataset...')
-
-        def prepare_dataset(batch):
-            # Preprocess audio
-            batch["input_values"] = processor(batch["speech_sample"]).input_values[0]
-
-            # Preprocess text
-            with processor.as_target_processor():
-                batch["labels"] = processor(batch['transcription']).input_ids
-
-            return batch
-
-        removable_column_names = raw_datasets["train"].column_names
-        if data_args.use_video:
-            removable_column_names.remove('video_path')
-            
-        with training_args.main_process_first(desc="dataset map preprocessing"):
-            vectorized_datasets = raw_datasets.map(
-                prepare_dataset,
-                remove_columns=removable_column_names,
-                num_proc=data_args.preprocessing_num_workers,
-                desc="preprocess datasets",
-                load_from_cache_file=False,
-                cache_file_names={
-                    "train": f"{cache_folder}/train_vec.arrow",
-                    "valid": f"{cache_folder}/valid_vec.arrow",
-                    "test": f"{cache_folder}/test_vec.arrow"
-                }
-            )
-
-        # Preprocess video sample
-        if data_args.use_video:
-            print('Load video data...')
-            img_transforms = T.Compose([
-                T.Grayscale(num_output_channels=1),
-                T.Resize((32,32))
-            ])
-            
-            def load_video_data(batch):
-                image_buffers = []
-                video_path = batch["video_path"]
-                for image_path in glob.glob(f'{base_path}/{video_path}/*.jpg'):
-                    image = torchvision.io.read_image(image_path) / 255
-                    image = img_transforms(image)
-                    image_buffers.append(image)
-                batch["video_values"] = image_buffers # L, C, H, W
-                return batch
-
-            with training_args.main_process_first(desc="dataset map preprocessing"):
-                vectorized_datasets = vectorized_datasets.map(
-                    load_video_data,
-                    remove_columns=['video_path'],
-                    num_proc=data_args.preprocessing_num_workers,
-                    desc="preprocess datasets",
-                    load_from_cache_file=False,
-                    cache_file_names={
-                        "train": f"{cache_folder}/train_vec.arrow",
-                        "valid": f"{cache_folder}/valid_vec.arrow",
-                        "test": f"{cache_folder}/test_vec.arrow"
-                    }
-                )
-        
-        vectorized_datasets.save_to_disk(f'{cache_folder}/preprocess_data.arrow')
-    else:
-        print('Loading cached dataset...')
-        vectorized_datasets = datasets.load_from_disk(f'{cache_folder}/preprocess_data.arrow')
+    print('Loading cached dataset...')
+    vectorized_datasets = datasets.load_from_disk(f'{data_args.test_manifest_path}')
 
     if data_args.preprocessing_only:
         logger.info(f"Data preprocessing finished. Files cached at {vectorized_datasets.cache_files}")
@@ -254,8 +140,8 @@ def run(model_args, data_args, training_args):
         data_collator=data_collator,
         args=training_args,
         compute_metrics=compute_metrics,
-        train_dataset=vectorized_datasets["train"] if training_args.do_train else None,
-        eval_dataset=vectorized_datasets["valid"] if training_args.do_eval else None,
+        train_dataset=vectorized_datasets["test"] if training_args.do_train else None,
+        eval_dataset=vectorized_datasets["test"] if training_args.do_eval else None,
         tokenizer=processor.feature_extractor,
     )
     
