@@ -351,5 +351,4 @@ $RECYCLE.BIN/
 # End of https://www.toptal.com/developers/gitignore/api/windows,linux,osx,python,jupyternotebooks,pycharm,visualstudiocode
 
 *.arrow
-dataset
 save

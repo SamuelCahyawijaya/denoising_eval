@@ -48,7 +48,10 @@ class MMWav2Vec2Model(nn.Module):
             
             # fuse multimodal
             video_logits = video_logits.repeat(1,2,1) # Convert 25 FPS to 50 FPS
-            logits = logits + video_logits[:,:logits.shape[1],:] # Fuse with Audio
+            if logits.shape[1] <= video_logits.shape[1]:
+                logits = logits + video_logits[:,:logits.shape[1],:] # Fuse with Audio
+            else:
+                logits[:,:video_logits.shape[1],:] = logits[:,:video_logits.shape[1],:] + video_logits # Fuse with Audio
 
         if labels is not None:
             if labels.max() >= self.wav2vec2ctc.config.vocab_size:

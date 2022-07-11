@@ -73,7 +73,7 @@ def run(model_args, data_args, training_args):
         model = MMWav2Vec2Model(wav2vec2ctc)
     else:
         model = wav2vec2ctc
-    model.load_state_dict(torch.load(f'{model_args.model_name_or_path}/pytorch_model.bin'))
+    model.load_state_dict(torch.load(f'{model_args.model_name_or_path}/pytorch_model.bin'), strict=False)
     model.cuda()
     
     print('Loading cached dataset...')
@@ -191,19 +191,19 @@ def main():
     set_seed(training_args.seed)
     
     # Detect last checkpoint
-    last_checkpoint = None
-    if os.path.isdir(training_args.output_dir) and training_args.do_train and not training_args.overwrite_output_dir:
-        last_checkpoint = get_last_checkpoint(training_args.output_dir)
-        if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
-            raise ValueError(
-                f"Output directory ({training_args.output_dir}) already exists and is not empty. "
-                "Use --overwrite_output_dir to overcome."
-            )
-        elif last_checkpoint is not None:
-            logger.info(
-                f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
-                "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
-            )
+    # last_checkpoint = None
+    # if os.path.isdir(training_args.output_dir) and training_args.do_train and not training_args.overwrite_output_dir:
+    #     last_checkpoint = get_last_checkpoint(training_args.output_dir)
+    #     if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
+    #         raise ValueError(
+    #             f"Output directory ({training_args.output_dir}) already exists and is not empty. "
+    #             "Use --overwrite_output_dir to overcome."
+    #         )
+    #     elif last_checkpoint is not None:
+    #         logger.info(
+    #             f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
+    #             "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
+    #         )
 
     ###
     # Prepare logger
